@@ -673,14 +673,7 @@ class _MemoMixin:
         self._recent.append(self)
 
 
-import abc
-
-class DispatcherMeta(abc.ABCMeta):
-    def __instancecheck__(self, other):
-        return type(type(other)) == DispatcherMeta
-
-
-class Dispatcher(serialize.ReduceMixin, _MemoMixin, _DispatcherBase, metaclass=DispatcherMeta):
+class Dispatcher(serialize.ReduceMixin, _MemoMixin, _DispatcherBase):
     """
     Implementation of user-facing dispatcher objects (i.e. created using
     the @jit decorator).
@@ -905,9 +898,6 @@ class Dispatcher(serialize.ReduceMixin, _MemoMixin, _DispatcherBase, metaclass=D
         if not self._can_compile and len(self.overloads) == 1:
             cres = tuple(self.overloads.values())[0]
             return types.FunctionType(cres.signature)
-
-    def get_compiled(self):
-        return self
 
 
 class LiftedCode(serialize.ReduceMixin, _MemoMixin, _DispatcherBase):

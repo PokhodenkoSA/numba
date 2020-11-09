@@ -135,9 +135,9 @@ class TestDispatcherPickling(TestCase):
 
         Note that "same function" is intentionally under-specified.
         """
-        func = closure(5).get_compiled()
+        func = closure(5)
         pickled = pickle.dumps(func)
-        func2 = closure(6).get_compiled()
+        func2 = closure(6)
         pickled2 = pickle.dumps(func2)
 
         f = pickle.loads(pickled)
@@ -152,7 +152,7 @@ class TestDispatcherPickling(TestCase):
         self.assertEqual(h(2, 3), 11)
 
         # Now make sure the original object doesn't exist when deserializing
-        func = closure(7).get_compiled()
+        func = closure(7)
         func(42, 43)
         pickled = pickle.dumps(func)
         del func
