@@ -249,8 +249,6 @@ class TestTracemalloc(unittest.TestCase):
             """
             return np.empty(N, dtype)
 
-        alloc_nrt_memory = alloc_nrt_memory.get_compiled()
-
         def keep_memory():
             return alloc_nrt_memory()
 
