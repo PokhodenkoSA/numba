@@ -55,6 +55,8 @@ int MemInfo_init(MemInfoObject *self, PyObject *args, PyObject *kwds) {
         return -1;
     }
     raw_ptr = PyLong_AsVoidPtr(raw_ptr_obj);
+    NRT_Debug(nrt_debug_print("MemInfo_init self=%p raw_ptr=%p\n", self, raw_ptr));
+
     if(PyErr_Occurred()) return -1;
     self->meminfo = (NRT_MemInfo *)raw_ptr;
     assert (NRT_MemInfo_refcount(self->meminfo) > 0 && "0 refcount");
@@ -109,6 +111,27 @@ MemInfo_get_refcount(MemInfoObject *self, void *closure) {
     return PyLong_FromSize_t(refct);
 }
 
+static
+PyObject*
+MemInfo_get_external_allocator(MemInfoObject *self, void *closure) {
+    void *p = NRT_MemInfo_external_allocator(self->meminfo);
+    printf("MemInfo_get_external_allocator %p\n", p);
+    return PyLong_FromVoidPtr(p);
+}
+
+static
+PyObject*
+MemInfo_get_parent(MemInfoObject *self, void *closure) {
+    void *p = NRT_MemInfo_parent(self->meminfo);
+    if (p) {
+        Py_INCREF(p);
+        return (PyObject*)p;
+    } else {
+        Py_INCREF(Py_None);
+        return Py_None;
+    }
+}
+
 static void
 MemInfo_dealloc(MemInfoObject *self)
 {
@@ -135,6 +158,13 @@ static PyGetSetDef MemInfo_getsets[] = {
     {"refcount",
      (getter)MemInfo_get_refcount, NULL,
      "Get the refcount",
+     NULL},
+    {"external_allocator",
+     (getter)MemInfo_get_external_allocator, NULL,
+     "Get the external allocator",
+     NULL},
+    {"parent",
+     (getter)MemInfo_get_parent, NULL,
      NULL},
     {NULL}  /* Sentinel */
 };
@@ -286,7 +316,7 @@ RETURN_ARRAY_COPY:
 }
 
 NUMBA_EXPORT_FUNC(PyObject *)
-NRT_adapt_ndarray_to_python(arystruct_t* arystruct, int ndim,
+NRT_adapt_ndarray_to_python(arystruct_t* arystruct, PyTypeObject *retty, int ndim,
                             int writeable, PyArray_Descr *descr)
 {
     PyArrayObject *array;
@@ -324,10 +354,13 @@ NRT_adapt_ndarray_to_python(arystruct_t* arystruct, int ndim,
         args = PyTuple_New(1);
         /* SETITEM steals reference */
         PyTuple_SET_ITEM(args, 0, PyLong_FromVoidPtr(arystruct->meminfo));
+        NRT_Debug(nrt_debug_print("NRT_adapt_ndarray_to_python arystruct->meminfo=%p\n", arystruct->meminfo));
         /*  Note: MemInfo_init() does not incref.  This function steals the
          *        NRT reference.
          */
+        NRT_Debug(nrt_debug_print("NRT_adapt_ndarray_to_python created MemInfo=%p\n", miobj));
         if (MemInfo_init(miobj, args, NULL)) {
+            NRT_Debug(nrt_debug_print("MemInfo_init returned 0.\n"));
             return NULL;
         }
         Py_DECREF(args);
@@ -336,7 +369,7 @@ NRT_adapt_ndarray_to_python(arystruct_t* arystruct, int ndim,
     shape = arystruct->shape_and_strides;
     strides = shape + ndim;
     Py_INCREF((PyObject *) descr);
-    array = (PyArrayObject *) PyArray_NewFromDescr(&PyArray_Type, descr, ndim,
+    array = (PyArrayObject *) PyArray_NewFromDescr(retty, descr, ndim,
                                                    shape, strides, arystruct->data,
                                                    flags, (PyObject *) miobj);
 
