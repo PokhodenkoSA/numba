@@ -8,6 +8,7 @@ from numba.core.typeconv import Conversion
 from numba.core import utils
 from .misc import UnicodeType
 from .containers import Bytes
+import numpy as np
 
 class CharSeq(Type):
     """
@@ -394,8 +395,9 @@ class Array(Buffer):
     Type class for Numpy arrays.
     """
 
-    def __init__(self, dtype, ndim, layout, readonly=False, name=None,
+    def __init__(self, dtype, ndim, layout, py_type=np.ndarray, readonly=False, name=None,
                  aligned=True, addrspace=None):
+        self.py_type = py_type
         if readonly:
             self.mutable = False
         if (not aligned or
