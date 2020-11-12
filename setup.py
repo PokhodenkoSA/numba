@@ -277,6 +277,12 @@ def get_ext_modules():
                                         'numba/core/runtime/_nrt_python.c'],
                                **np_compile_args)
 
+    ext_dppl = Extension(name='numba.dppl._dppl_rt',
+                         sources=['numba/dppl/dppl_rt.c'],
+                         depends=['numba/core/runtime/nrt_external.h',
+                                  'numba/core/runtime/nrt.h'],
+                         )
+
     ext_jitclass_box = Extension(name='numba.experimental.jitclass._box',
                                  sources=['numba/experimental/jitclass/_box.c'],
                                  depends=['numba/experimental/_pymodule.h'],
@@ -289,7 +295,7 @@ def get_ext_modules():
 
     ext_modules = [ext_dynfunc, ext_dispatcher, ext_helperlib, ext_typeconv,
                    ext_np_ufunc, ext_npyufunc_num_threads, ext_mviewbuf,
-                   ext_nrt_python, ext_jitclass_box, ext_cuda_extras]
+                   ext_nrt_python, ext_dppl, ext_jitclass_box, ext_cuda_extras]
 
     ext_modules += ext_np_ufunc_backends
 

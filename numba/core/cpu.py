@@ -66,6 +66,7 @@ class CPUContext(BaseContext):
         from numba.np import npyimpl
         from numba.cpython import cmathimpl, mathimpl, printimpl, randomimpl
         from numba.misc import cffiimpl
+        from numba.dppl.dparray import numba_register as dparray_register
         self.install_registry(cmathimpl.registry)
         self.install_registry(cffiimpl.registry)
         self.install_registry(mathimpl.registry)
@@ -75,6 +76,7 @@ class CPUContext(BaseContext):
 
         # load 3rd party extensions
         numba.core.entrypoints.init_all()
+        dparray_register()
 
     @property
     def target_data(self):
