@@ -232,7 +232,7 @@ def _jit(sigs, locals, target, cache, targetoptions, **dispatcher_args):
             disp = registry.dispatcher_registry[target_]
             return wrapper(func, disp)
 
-        from numba.dppl.target_dispatcher import TargetDispatcher
+        from numba_dppy.target_dispatcher import TargetDispatcher
         disp = TargetDispatcher(func, wrapper, target, targetoptions.get('parallel'))
         return disp
 
