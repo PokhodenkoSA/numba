@@ -480,7 +480,7 @@ def _lower_parfor_parallel(lowerer, parfor):
         print("_lower_parfor_parallel done")
 
 # A work-around to prevent circular imports
-lowering.lower_extensions[parfor.Parfor] = _lower_parfor_parallel
+#lowering.lower_extensions[parfor.Parfor] = _lower_parfor_parallel
 
 
 def _create_shape_signature(
