@@ -222,17 +222,24 @@ def _jit(sigs, locals, target, cache, targetoptions, **dispatcher_args):
                 f"{type(func)})."
             )
 
-        from numba import dppl_config
-        if (target == 'npyufunc' or targetoptions.get('no_cpython_wrapper')
-            or sigs or config.DISABLE_JIT or not targetoptions.get('nopython')
-            or dppl_config.dppl_present is not True):
+        is_numba_dppy_present = False
+        try:
+            import numba_dppy.config as dppy_config
+
+            is_numba_dppy_present = dppy_config.dppy_present
+        except ImportError:
+            pass
+
+        if (not is_numba_dppy_present
+            or target == 'npyufunc' or targetoptions.get('no_cpython_wrapper')
+            or sigs or config.DISABLE_JIT or not targetoptions.get('nopython')):
             target_ = target
             if target_ is None:
                 target_ = 'cpu'
             disp = registry.dispatcher_registry[target_]
             return wrapper(func, disp)
 
-        from numba.dppl.target_dispatcher import TargetDispatcher
+        from numba_dppy.target_dispatcher import TargetDispatcher
         disp = TargetDispatcher(func, wrapper, target, targetoptions.get('parallel'))
         return disp
 
