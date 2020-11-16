@@ -220,7 +220,7 @@ class CodeLibrary(object):
         Finalization involves various stages of code optimization and
         linking.
         """
-        require_global_compiler_lock()
+        #require_global_compiler_lock()
 
         # Report any LLVM-related problems to the user
         self._codegen._check_llvm_bugs()
