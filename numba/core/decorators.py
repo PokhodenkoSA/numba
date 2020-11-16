@@ -223,7 +223,16 @@ def _jit(sigs, locals, target, cache, targetoptions, **dispatcher_args):
             )
 
         from numba import dppl_config
-        if (target == 'npyufunc' or targetoptions.get('no_cpython_wrapper')
+
+        is_numba_dppy_present = False
+        try:
+            import numba_dppy
+            is_numba_dppy_present = True
+        except ImportError:
+            pass
+
+        if (not is_numba_dppy_present
+            or target == 'npyufunc' or targetoptions.get('no_cpython_wrapper')
             or sigs or config.DISABLE_JIT or not targetoptions.get('nopython')
             or dppl_config.dppl_present is not True):
             target_ = target
