@@ -1,4 +1,3 @@
-#from ._ndarray_utils import _transmogrify
 import numpy as np
 from inspect import getmembers, isfunction, isclass, isbuiltin
 from numbers import Number
@@ -11,7 +10,7 @@ from numba.core.pythonapi import box, allocator
 from llvmlite import ir
 import llvmlite.llvmpy.core as lc
 import llvmlite.binding as llb
-from numba.core import types, cgutils
+from numba.core import types, cgutils, config
 import builtins
 import sys
 from ctypes.util import find_library
@@ -24,19 +23,17 @@ import inspect
 from numba.core.typing.templates import CallableTemplate
 from numba.np.arrayobj import _array_copy
 
-debug = False
+debug = config.DEBUG
 
 def dprint(*args):
     if debug:
         print(*args)
         sys.stdout.flush()
 
-flib = find_library('mkl_intel_ilp64')
-dprint("flib:", flib)
-llb.load_library_permanently(flib)
-
+# This code makes it so that Numba can contain calls into the DPPLSyclInterface library.
 sycl_mem_lib = find_library('DPPLSyclInterface')
 dprint("sycl_mem_lib:", sycl_mem_lib)
+# Load the symbols from the DPPL Sycl library.
 llb.load_library_permanently(sycl_mem_lib)
 
 import dpctl
@@ -76,7 +73,7 @@ class ndarray(np.ndarray):
                 dprint("buffer None new_obj already has sycl_usm")
             else:
                 dprint("buffer None new_obj will add sycl_usm")
-                new_obj.__sycl_usm_array_interface__ = {}
+                setattr(new_obj, array_interface_property, {})
             return new_obj
         # zero copy if buffer is a usm backed array-like thing
         elif hasattr(buffer, array_interface_property):
@@ -90,7 +87,7 @@ class ndarray(np.ndarray):
                 dprint("buffer None new_obj already has sycl_usm")
             else:
                 dprint("buffer None new_obj will add sycl_usm")
-                new_obj.__sycl_usm_array_interface__ = {}
+                setattr(new_obj, array_interface_property, {})
             return new_obj
         else:
             dprint("dparray::ndarray __new__ buffer not None and not sycl_usm")
@@ -110,13 +107,11 @@ class ndarray(np.ndarray):
                 dprint("buffer None new_obj already has sycl_usm")
             else:
                 dprint("buffer None new_obj will add sycl_usm")
-                new_obj.__sycl_usm_array_interface__ = {}
+                setattr(new_obj, array_interface_property, {})
             return new_obj
 
     def __array_finalize__(self, obj):
         dprint("__array_finalize__:", obj, hex(id(obj)), type(obj))
-#        import pdb
-#        pdb.set_trace()
         # When called from the explicit constructor, obj is None
         if obj is None: return
         # When called in new-from-template, `obj` is another instance of our own
@@ -150,29 +145,8 @@ class ndarray(np.ndarray):
     
         # Just raise an exception since __array_ufunc__ makes all reasonable cases not
         # need the code below.
-        raise ValueError("Non-MKL allocated ndarray can not viewed as MKL-allocated one without a copy")
+        raise ValueError("Non-USM allocated ndarray can not viewed as a USM-allocated one without a copy")
       
-        """
-        # since dparray must have mkl_memory underlying it, a copy must be made
-        newbuf = dpctl.Memory(nbytes=self.data.nbytes)
-        new_arr = np.ndarray.__new__(
-            type(self),
-            self.shape,
-            buffer=newbuf, offset=0,
-            dtype=self.dtype,
-            strides=self.strides)
-        np.copyto(new_arr, self)
-        # We need to modify self to now be mkl_memory-backed ndarray
-        # We only need to change data and base, but these are not writeable.
-        #
-        # Modification can not be done by simply setting self either,
-        # as self is just a local copy of the instance.
-        #
-        # raise ValueError("Non-MKL allocated ndarray can not viewed as MKL-allocated one without a copy")
-        # Will probably have to raise an exception soon as Numpy may disallow this.
-        _transmogrify(self, new_arr)
-        """
-
     # Tell Numba to not treat this type just like a NumPy ndarray but to propagate its type.
     # This way it will use the custom dparray allocator.
     __numba_no_subtype_ndarray__ = True
@@ -236,7 +210,7 @@ def isdef(x):
     try:
         eval(x)
         return True
-    except NameEror:
+    except NameError:
         return False
 
 for c in class_list:
@@ -245,24 +219,11 @@ for c in class_list:
         continue
     # For now we do the simple thing and copy the types from NumPy module into dparray module.
     new_func = "%s = np.%s" % (cname, cname)
-#    new_func =  "class %s(np.%s):\n" % (cname, cname)
-    if cname == "ndarray":
-        # Implemented explicitly above.
-        continue
-    else:
-        # This is temporary.
-#        new_func += "    pass\n"
-        # The code below should eventually be made to work and used.
-#        new_func += "    @classmethod\n"
-#        new_func += "    def cast(cls, some_np_obj):\n"
-#        new_func += "        some_np_obj.__class__ = cls\n"
-#        new_func += "        return some_np_obj\n"
-        pass
     try:
         the_code = compile(new_func, '__init__', 'exec')
         exec(the_code)
     except:
-        print("Failed to exec class", cname)
+        print("Failed to exec type propagation", cname)
         pass
 
 # Redefine all Numpy functions in this module and if they
@@ -272,7 +233,6 @@ for c in class_list:
 for fname in functions_list:
     if isdef(fname):
         continue
-#    print("Adding function", fname)
     new_func =  "def %s(*args, **kwargs):\n" % fname
     new_func += "    ret = np.%s(*args, **kwargs)\n" % fname
     new_func += "    if type(ret) == np.ndarray:\n"
@@ -319,56 +279,6 @@ def typeof_ta_ndarray(val, c):
 # This tells Numba to use the default Numpy ndarray data layout for
 # object of type DPArray.
 register_model(DPArrayType)(numba.core.datamodel.models.ArrayModel)
-
-"""
-# This code should not work because you can't pass arbitrary buffer to dparray constructor.
-
-# This tells Numba how to type calls to a DPArray constructor.
-@type_callable(ndarray)
-def type_ndarray(context):
-    def typer(shape, ndim, buf):
-        return DPArrayType(buf.dtype, buf.ndim, buf.layout)
-    return typer
-
-@overload(ndarray)
-def overload_ndarray_constructor(shape, dtype, buf):
-    print("overload_ndarray_constructor:", shape, dtype, buf)
-
-    def ndarray_impl(shape, dtype, buf):
-        pass
-
-    return ndarray_impl
-
-# This tells Numba how to implement calls to a DPArray constructor.
-@lower_builtin(ndarray, types.UniTuple, types.DType, types.Array)
-def impl_ndarray(context, builder, sig, args):
-    # Need to allocate and copy here!
-    shape, ndim, buf = args
-    return buf
-
-    context.nrt._require_nrt()
-
-    mod = builder.module
-    u32 = ir.IntType(32)
-
-    # Get the Numba external allocator for USM memory.
-    ext_allocator_fnty = ir.FunctionType(cgutils.voidptr_t, [])
-    ext_allocator_fn = mod.get_or_insert_function(ext_allocator_fnty,
-                                    name="dparray_get_ext_allocator")
-    ext_allocator = builder.call(ext_allocator_fn, [])
-    # Get the Numba function to allocate an aligned array with an external allocator.
-    fnty = ir.FunctionType(cgutils.voidptr_t, [cgutils.intp_t, u32, cgutils.voidptr_t])
-    fn = mod.get_or_insert_function(fnty,
-                                    name="NRT_MemInfo_alloc_safe_aligned_external")
-    fn.return_value.add_attribute("noalias")
-    if isinstance(align, builtins.int):
-        align = context.get_constant(types.uint32, align)
-    else:
-        assert align.type == u32, "align must be a uint32"
-    newary = builder.call(fn, [size, align, ext_allocator])
-
-    return buf
-"""
 
 # This tells Numba how to convert from its native representation
 # of a DPArray in a njit function back to a Python DPArray.
@@ -447,25 +357,18 @@ def numba_register_lower_builtin():
     # For all Numpy identifiers that have been registered for typing in Numba...
     # this registry contains functions, getattrs, setattrs, casts and constants...need to do them all? FIX FIX FIX
     for ig in lower_registry.functions:
-#        print("ig:", ig, type(ig), len(ig))
         impl, func, types = ig
-#        print("register lower_builtin:", impl, type(impl), func, type(func), types, type(types))
         # If it is a Numpy function...
         if isinstance(func, ftype):
-#            print("isfunction:", func.__module__, type(func.__module__))
             if func.__module__ == np.__name__:
-#                print("name:", func.__name__)
                 # If we have overloaded that function in the dparray module (always True right now)...
                 if func.__name__ in functions_list:
                     todo.append(ig)
         if isinstance(func, bftype):
-#            print("isbuiltinfunction:", func.__module__, type(func.__module__))
             if func.__module__ == np.__name__:
-#                print("name:", func.__name__)
                 # If we have overloaded that function in the dparray module (always True right now)...
                 if func.__name__ in functions_list:
                     todo.append(ig)
-#                    print("todo_builtin added:", func.__name__)
 
     for lg in lower_registry.getattrs:
         func, attr, types = lg
@@ -482,7 +385,6 @@ def numba_register_lower_builtin():
         dparray_func = eval(func.__name__)
         dprint("need to re-register lowerer for dparray", impl, func, types, dparray_func)
         new_impl = copy_func_for_dparray(impl, cur_mod)
-#        lower_registry.functions.append((impl, dparray_func, types))
         lower_registry.functions.append((new_impl, dparray_func, types))
 
 def argspec_to_string(argspec):
@@ -500,10 +402,8 @@ def numba_register_typing():
     # For all Numpy identifiers that have been registered for typing in Numba...
     for ig in typing_registry.globals:
         val, typ = ig
-#        print("global typing:", val, type(val), typ, type(typ))
         # If it is a Numpy function...
         if isinstance(val, (ftype, bftype)):
-#            print("name:", val.__name__, val.__name__ in functions_list)
             # If we have overloaded that function in the dparray module (always True right now)...
             if val.__name__ in functions_list:
                 todo.append(ig)
@@ -513,12 +413,6 @@ def numba_register_typing():
     for tgetattr in templates_registry.attributes:
         if tgetattr.key == types.Array:
             todo_getattr.append(tgetattr)
-
-    # This is actuallya no-op now.
-#    for val, typ in todo_classes:
-#        print("todo_classes:", val, type(val), typ, type(typ))
-#        assert len(typ.templates) == 1
-#        dpval = eval(val.__name__)
 
     for val, typ in todo:
         assert len(typ.templates) == 1
@@ -549,9 +443,7 @@ def numba_register_typing():
             cls.original = original
 
         def generic_impl(self):
-#            print("generic_impl", self.__class__.key, self.__class__.original)
             original_typer = self.__class__.original.generic(self.__class__.original)
-            #print("original_typer:", original_typer, type(original_typer), self.__class__)
             ot_argspec = inspect.getfullargspec(original_typer)
             #print("ot_argspec:", ot_argspec)
             astr = argspec_to_string(ot_argspec)
