@@ -1,62 +1,8 @@
 from __future__ import print_function, division, absolute_import
 
-import numba
 import numba.dppl.dparray as dparray
 import numpy
 import sys
-
-def p1(a):
-    return a * 2.0 + 13
-
-f1 = numba.njit(p1)
-
-@numba.njit()
-def f2(a):
-    return a
-
-@numba.njit()
-def f3(a, b):  # a is dparray, b is numpy
-    return a * dparray.asarray(b)
-
-@numba.njit()
-def f4():
-    return dparray.ones(10)
-
-def p5(a, b):  # a is dparray, b is numpy
-    return a * b
-
-f5 = numba.njit(p5)
-
-@numba.njit()
-def f6(a):
-    return a + 13
-
-@numba.njit()
-def f7(a):  # a is dparray
-    # implicit conversion of a to numpy.ndarray
-    b = numpy.ones(10)
-    c = a * b
-    d = a.argsort()  # with no implicit conversion this fails
-
-@numba.njit
-def f8(a):
-    return dparray.as_ndarray(a)
-
-@numba.njit
-def f9(a):
-    return dparray.from_ndarray(a)
-
-@numba.njit
-def f10():
-    return dparray.empty((10,10))
-
-@numba.njit
-def f11(x):
-    return x.shape
-
-@numba.njit
-def f12(x):
-    return x.T
 
 #--------------------------------------------------------------------------------
 
